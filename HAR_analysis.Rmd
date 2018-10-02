@@ -1,0 +1,169 @@
+---
+title: "Human Activity Recognition Project"
+author: "Ralston Fonseca"
+date: "October 2, 2018"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Overview
+
+People regularly quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, we will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: (http://groupware.les.inf.puc-rio.br/har) _(see the section on the Weight Lifting Exercise Dataset)_.
+
+# Strategy
+#### I) Data
+We have 2 sets of data:
+
+- The training set (https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv) is partioned into 2 sets:
+    1) Training data
+    2) Test data, used to check the Accuracy.
+- The Test data (https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv), which will be used for cross-validation.
+
+#### II) Model Selection
+We will build different models (using training data) and check their accuracy with test data. Based on their accuracy and performance we will select an appropriate model for our prediction. We will use _caret_ package in R for building our models.
+ 
+We will use the following methods for model creation:
+
+- MODEL1: _Bagging_, using _treebag_ method
+- MODEL2: _Decision Tree_ using _rpart_ method
+- MODEL3: _Random Forrest_, using _rf_ method
+- MODEL4: _Boosting_, using _gbm_ method
+
+If we do not get satisfactory results from above methods then we will explore combination of models.
+
+#### III) Prediction based on selected model
+At the end, we will predict the values for cross-validation data.
+
+## I) Data
+Let's download and load the data in R.
+The original training data _(pml-training.csv)_ has **19622** observations and **160** variables (columns). The original testing data used from cross-validation has **20** observations and **160** variables. 
+
+```{r echo=FALSE}
+library(caret)
+
+set.seed(0210)
+
+data1 <- read.csv(file="pml-training.csv",header = TRUE) # dim 19622   160
+dim(data1)
+data2 <- read.csv(file="pml-testing.csv",header = TRUE) # dim  20 160
+dim(data2)
+```
+First we will eliminate variables with _Near Zero Variation_. Following **60** variables were identified.
+
+```{r echo=FALSE}
+data1NZV <- nearZeroVar(data1, saveMetrics=TRUE) 
+rownames(data1NZV[data1NZV$nzv == TRUE, ])
+NZVcols <- names(data1) %in% rownames(data1NZV[data1NZV$nzv == TRUE, ]) # 60 columns
+refinedData1 <- data1[,!NZVcols] # 19622   100
+dim(refinedData1)
+```
+
+After elimination we are left with **100** variables in training dataset. 
+
+We observe that many variables are have having no data i.e NAs or are empty (""). Our strategy will be to eliminate variables where more than _50%_ data is NOT available. We won't be getting good model fit with such cases. Following **41** variables were found with this condition.
+
+```{r echo=FALSE}
+indColsWithNA <- which(colSums(is.na(refinedData1) | refinedData1 == "") > 0.5 * nrow(refinedData1))
+names(refinedData1[,indColsWithNA])
+refinedData1 <- refinedData1[,-indColsWithNA] # dim 19622    59
+dim(refinedData1)
+```
+After eliminating them we are left with **59** variables in training data.
+
+Performing the equivalent operations on test data to eliminate the variables.
+```{r echo=FALSE}
+refinedData2 <- data2[,!NZVcols]
+refinedData2 <- refinedData2[,-indColsWithNA]
+dim(refinedData2)
+```
+
+Dividing training data such that _70%_ is allocated for training model fit and remaining _30%_ for testing and calculating the accuracy.
+```{r echo=FALSE}
+indTrain1 <- createDataPartition(refinedData1$classe, p=0.70, list=FALSE)
+train1 <- refinedData1[indTrain1,] # dim 13737    59
+dim(train1)
+test1 <- refinedData1[-indTrain1,] # dim 5885   59
+dim(test1)
+rm(data1,data2,refinedData1)
+```
+
+## II) Model Selection
+Let's explore different methods to find the best model.
+
+#### MODEL1: _Bagging_, using _treebag_ method
+
+```{r echo=FALSE}
+modelBAG <- train(classe ~ ., data = train1, method = "treebag")
+predBAG <- predict(modelBAG, test1)
+cmBAG <- confusionMatrix(predBAG, test1$classe)
+cmBAG$table
+cmBAG$overall[1]
+```
+
+We get _99.97%_ accuracy using _treebag_ method.
+
+#### MODEL2: _Decision Tree_ using _rpart_ method
+
+```{r echo=FALSE}
+modelRPART <- train(classe ~ ., data = train1, method = "rpart")
+predRPART <- predict(modelRPART, test1)
+cmRPART <- confusionMatrix(predRPART, test1$classe)
+cmRPART$table
+cmRPART$overall[1]
+plot(modelRPART,main="Accuracy of Decision Tree (rpart) model by Complexity Parameter")
+```
+
+We get a low _66.17%_ accuracy using _rpart_ method and is not encouraging.
+
+#### MODEL3: _Random Forrest_, using _rf_ method
+
+```{r echo=FALSE}
+trCtrl <- trainControl(method="repeatedcv", number=3, allowParallel=TRUE )
+
+modelRF <- train(classe ~ ., data = train1, method = "rf",trControl=trCtrl, verbose=FALSE)
+predRF <- predict(modelRF, test1)
+cmRF <- confusionMatrix(predRF, test1$classe)
+cmRF$table
+cmRF$overall[1]
+plot(modelRF,main="Accuracy of Random Forest model by Number of Predictors")
+```
+
+The accuracy hits the peak at around 41 predictors and then starts declining.
+
+We get a perfect _100%_ accuracy using _rf_ method.
+
+#### MODEL4: _Boosting_, using _gbm_ method
+
+```{r echo=FALSE}
+modelGBM <- train(classe ~ ., data = train1, method = "gbm",trControl=trCtrl, verbose=FALSE)
+predGBM <- predict(modelGBM, test1)
+cmGBM <- confusionMatrix(predGBM, test1$classe)
+cmGBM$table
+cmGBM$overall[1]
+plot(modelGBM,main="Accuracy of Boosting (gbm) model by Number of Iterations")
+```
+
+We get _99.97%_ accuracy using _gbm_ method.
+
+
+## III) Prediction based on selected model
+
+##### Conclusion
+Bagging _(99.97%)_, Random Forest _(100%)_ and Boosting models _(99.97%)_ provide above 99% accuracy. I found Random Forest to be slow. Finally, I have decided to go with boosting as it provides high accuracy and with reasonable performance. 
+
+The Final predicted values from 20 observations from test data is as follows:
+
+```{r echo=FALSE}
+predTestData <- predict(modelGBM, refinedData2)
+predTestData
+```
+
+
+
+
+
