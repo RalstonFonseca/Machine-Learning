@@ -1,7 +1,7 @@
 ---
 title: "Human Activity Recognition Project"
 author: "Ralston Fonseca"
-date: "October 2, 2018"
+date: "October 3, 2018"
 output: 
   html_document: 
     keep_md: yes
@@ -37,7 +37,7 @@ We will use the following methods for model creation:
 If we do not get satisfactory results from above methods then we will explore combination of models.
 
 #### III) Prediction based on selected model
-At the end, we will predict the values for cross-validation data.
+Finally, based on the model selected we will predict the values for cross-validation data.
 
 ## I) Data
 Let's download and load the data in R.
@@ -53,32 +53,28 @@ dim(data1)
 data2 <- read.csv(file="pml-testing.csv",header = TRUE) # dim  20 160
 dim(data2)
 ```
-First we will eliminate variables with _Near Zero Variation_. Following **60** variables were identified.
+
+We observe that many variables are have having no data i.e NAs or are empty (""). Our strategy will be to eliminate variables where more than _50%_ data is NOT available. We won't be getting good model fit with such cases. Following **100** variables were found with this condition.
 
 ```{r echo=FALSE}
-data1NZV <- nearZeroVar(data1, saveMetrics=TRUE) 
-rownames(data1NZV[data1NZV$nzv == TRUE, ])
-NZVcols <- names(data1) %in% rownames(data1NZV[data1NZV$nzv == TRUE, ]) # 60 columns
-refinedData1 <- data1[,!NZVcols] # 19622   100
+indColsWithNA <- which(colSums(is.na(data1) | data1 == "") > 0.5 * nrow(data1))
+names(data1[,indColsWithNA])
+refinedData1 <- data1[,-indColsWithNA] # dim 19622    60
 dim(refinedData1)
 ```
+After eliminating them we are left with **60** variables in training data.
 
-After elimination we are left with **100** variables in training dataset. 
-
-We observe that many variables are have having no data i.e NAs or are empty (""). Our strategy will be to eliminate variables where more than _50%_ data is NOT available. We won't be getting good model fit with such cases. Following **41** variables were found with this condition.
-
+Following variables do not contribute to the outcome so will be eliminating them too
 ```{r echo=FALSE}
-indColsWithNA <- which(colSums(is.na(refinedData1) | refinedData1 == "") > 0.5 * nrow(refinedData1))
-names(refinedData1[,indColsWithNA])
-refinedData1 <- refinedData1[,-indColsWithNA] # dim 19622    59
-dim(refinedData1)
+names(refinedData1[,c(1:7)])
+refinedData1 <- refinedData1[,-c(1:7)]
+dim(refinedData1) # dim 19662 53
 ```
-After eliminating them we are left with **59** variables in training data.
 
 Performing the equivalent operations on test data to eliminate the variables.
 ```{r echo=FALSE}
-refinedData2 <- data2[,!NZVcols]
-refinedData2 <- refinedData2[,-indColsWithNA]
+selectedCols <- colnames(refinedData1[,-53])
+refinedData2 <- data2[,selectedCols]
 dim(refinedData2)
 ```
 
@@ -105,7 +101,7 @@ cmBAG$table
 cmBAG$overall[1]
 ```
 
-We get _99.97%_ accuracy using _treebag_ method.
+We get _98.40%_ accuracy using _treebag_ method.
 
 #### MODEL2: _Decision Tree_ using _rpart_ method
 
@@ -118,7 +114,7 @@ cmRPART$overall[1]
 plot(modelRPART,main="Accuracy of Decision Tree (rpart) model by Complexity Parameter")
 ```
 
-We get a low _66.17%_ accuracy using _rpart_ method and is not encouraging.
+We get a low _49.43%_ accuracy using _rpart_ method and is not encouraging.
 
 #### MODEL3: _Random Forrest_, using _rf_ method
 
@@ -133,9 +129,9 @@ cmRF$overall[1]
 plot(modelRF,main="Accuracy of Random Forest model by Number of Predictors")
 ```
 
-The accuracy hits the peak at around 41 predictors and then starts declining.
+The accuracy hits the peak at around 27 predictors and then starts declining.
 
-We get a perfect _100%_ accuracy using _rf_ method.
+We get  _99.51%_ accuracy using _rf_ method.
 
 #### MODEL4: _Boosting_, using _gbm_ method
 
@@ -148,18 +144,18 @@ cmGBM$overall[1]
 plot(modelGBM,main="Accuracy of Boosting (gbm) model by Number of Iterations")
 ```
 
-We get _99.97%_ accuracy using _gbm_ method.
+We get _96.53%_ accuracy using _gbm_ method.
 
 
 ## III) Prediction based on selected model
 
 ##### Conclusion
-Bagging _(99.97%)_, Random Forest _(100%)_ and Boosting models _(99.97%)_ provide above 99% accuracy. I found Random Forest to be slow. Finally, I have decided to go with boosting as it provides high accuracy and with reasonable performance. 
+Bagging _(98.40%)_, Random Forest _(99.51%)_ and Boosting models _(96.53%)_ provide above 95% accuracy. I have decided to go with Random Forest as it provides high accuracy and with reasonable performance. 
 
 The Final predicted values from 20 observations from test data is as follows:
 
 ```{r echo=FALSE}
-predTestData <- predict(modelGBM, refinedData2)
+predTestData <- predict(modelRF, refinedData2)
 predTestData
 ```
 
